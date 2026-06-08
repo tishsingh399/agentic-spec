@@ -1,0 +1,49 @@
+{
+  "name": "agentic-spec",
+  "version": "0.1.0",
+  "description": "Generate agentic design system specs from Figma. Emits machine-readable specs (frontmatter + closed token contract) that AI agents can read, validate against, and extend.",
+  "type": "module",
+  "main": "dist/cli/index.js",
+  "bin": {
+    "agentic-spec": "dist/cli/index.js"
+  },
+  "files": ["dist", "_templates", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli/index.ts",
+    "test": "node --test --import tsx tests/*.test.ts",
+    "validate:self": "tsx src/cli/index.ts validate examples/button"
+  },
+  "keywords": [
+    "design-system",
+    "design-tokens",
+    "figma",
+    "mcp",
+    "agentic",
+    "ai",
+    "claude",
+    "spec",
+    "design-tokens-community-group"
+  ],
+  "author": "Tina Singh",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tishsingh399/agentic-spec.git"
+  },
+  "homepage": "https://github.com/tishsingh399/agentic-spec",
+  "bugs": "https://github.com/tishsingh399/agentic-spec/issues",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "yaml": "^2.5.0",
+    "kleur": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

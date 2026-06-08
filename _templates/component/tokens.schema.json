@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Component tokens contract",
+  "description": "Per-component token contract used by the agentic spec layer. Every token a component is allowed to reference, with tier, role, and the resolved primitive.",
+  "type": "object",
+  "required": ["component", "source", "version", "tokens"],
+  "properties": {
+    "component": { "type": "string", "description": "kebab-case component name; must match the spec's frontmatter `component` field" },
+    "source": { "type": "string", "format": "uri", "description": "Upstream token repo URL" },
+    "version": { "type": "string", "description": "Pinned token version, e.g. tina-ds@HEAD or tina-ds@v1.2.0" },
+    "verified": { "type": "string", "format": "date" },
+    "fork_model": { "type": "string", "description": "How tokens reference each other in this DS" },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "tokens": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "tier", "role", "path"],
+        "properties": {
+          "name": { "type": "string", "description": "Friendly alias used in the spec" },
+          "tier": { "enum": ["primitive", "semantic", "component"] },
+          "role": { "type": "string", "description": "What this token is FOR — e.g. default-fill-primary, focus-ring" },
+          "path": { "type": "string", "description": "Dotted path in the token JSON" },
+          "primitive": { "type": "string", "description": "Bound primitive reference, e.g. {color.blue.6}" },
+          "light": { "type": "string", "description": "Resolved light-mode value" },
+          "dark": { "type": "string", "description": "Resolved dark-mode value" },
+          "status": { "enum": ["existing", "proposed", "deprecated"] }
+        }
+      }
+    }
+  }
+}
