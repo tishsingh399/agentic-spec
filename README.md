@@ -7,6 +7,8 @@
 ![node](https://img.shields.io/badge/node-%E2%89%A518-brightgreen)
 ![status](https://img.shields.io/badge/status-alpha-orange)
 
+**Reference implementation:** [Clementine DS](https://github.com/tishsingh399/clementine-ds) — the spec format originated there. See its [Notion docs](https://www.notion.so/tinasingh/Clementine-DS-379e72c9cf36806f9a5ce8fdb927b93f) for the architecture narrative.
+
 ## What this is
 
 Design systems usually ship two artifacts: a component library and a Storybook. Both drift from documentation the moment the first PR lands. When an AI agent (Claude, Cursor, an MCP server) is asked to use the system, the agent has nothing concrete to anchor to and reliably:
