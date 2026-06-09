@@ -23,7 +23,7 @@ Design systems usually ship two artifacts: a component library and a Storybook. 
 - `required_aria` and `interaction_states` are enumerated.
 - `sources` points the agent at the exact code, story, and token files.
 
-The spec format is the one used in [tishsingh399/design-system-ANT](https://github.com/tishsingh399/design-system-ANT).
+The spec format is the one used in [Clementine DS](https://github.com/tishsingh399/clementine-ds), an agentic React design system with 3-tier tokens (primitive → semantic → component) and one spec per component.
 
 ## Install
 
@@ -86,20 +86,22 @@ See [ROADMAP.md](./ROADMAP.md) for the integration shape.
 
 ## Example
 
-The [`examples/button/`](./examples/button/) directory contains a real spec (the Button from `design-system-ANT`) you can validate:
+The [`examples/button/`](./examples/button/) directory contains a real spec (the Button from [Clementine DS](https://github.com/tishsingh399/clementine-ds)) you can validate:
 
 ```bash
 agentic-spec validate examples/button
 # PASS button (examples/button)
-#   tokens: 13 in contract, 13 in tokens.json · states: 6 · parts: 5
+#   tokens: 15 in contract, 15 in tokens.json · states: 6 · parts: 5
 ```
+
+The contract is 15 component-tier tokens (`button.bg.default`, `button.fg.on-filled`, `button.border.focus`, ...) — each one references a semantic token, which references a primitive. The validator checks every link in the chain.
 
 ## The spec format in 30 seconds
 
 ```yaml
 ---
 component: button
-ds_version: tina-ds@HEAD (2026-06-08 verified)
+ds_version: clementine-ds@HEAD (2026-06-08 verified)
 status: AI-Ready
 last_verified: 2026-06-08
 category: Component
@@ -109,10 +111,10 @@ semantic_parts:
   label: Text content
   icon-leading: Optional leading icon
 token_contract:
-  - action.primary
-  - action.primary-hover
-  - focus.ring
-  # ... closed list
+  - button.bg.default
+  - button.bg.hover
+  - button.border.focus
+  # ... closed list of 15 component-tier tokens
 interaction_states: [default, hover, focus, active, disabled, loading]
 checks:
   aria_correct: true

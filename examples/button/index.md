@@ -1,6 +1,6 @@
 ---
 component: button
-ds_version: tina-ds@HEAD (2026-06-08 verified)
+ds_version: clementine-ds@HEAD (2026-06-08 verified)
 status: AI-Ready
 last_verified: 2026-06-08
 
@@ -15,19 +15,21 @@ semantic_parts:
   spinner:       Loading-state indicator that replaces icon-leading
 
 token_contract:
-  - action.primary
-  - action.primary-hover
-  - action.primary-active
-  - action.destructive
-  - action.destructive-hover
-  - surface.default
-  - surface.elevated
-  - text.primary
-  - text.on-action
-  - border.default
-  - border.strong
-  - border.focus
-  - focus.ring
+  - button.bg.default
+  - button.bg.hover
+  - button.bg.active
+  - button.bg.disabled
+  - button.bg-destructive.default
+  - button.bg-destructive.hover
+  - button.bg-outline.default
+  - button.bg-outline.hover
+  - button.fg.on-filled
+  - button.fg.on-outline
+  - button.fg.disabled
+  - button.border.default
+  - button.border.hover
+  - button.border.focus
+  - button.radius
 
 interaction_states: [default, hover, focus, active, disabled, loading]
 
@@ -48,6 +50,7 @@ sources:
   tokens:
     primitives: packages/tokens/src/primitives.json
     semantic_light: packages/tokens/src/semantic-light.json
+    component: packages/tokens/src/components/button.json
     semantic_dark: packages/tokens/src/semantic-dark.json
 
 patterns_used_in: [form, action-bar, modal-footer, toolbar]
