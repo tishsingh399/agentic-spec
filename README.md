@@ -7,7 +7,7 @@
 ![node](https://img.shields.io/badge/node-%E2%89%A518-brightgreen)
 ![status](https://img.shields.io/badge/status-alpha-orange)
 
-**Reference implementation:** [Clementine DS](https://github.com/tishsingh399/clementine-ds) — the spec format originated there. See its [Notion docs](https://www.notion.so/tinasingh/Clementine-DS-379e72c9cf36806f9a5ce8fdb927b93f) for the architecture narrative.
+**Reference implementation:** [Clementine DS](https://github.com/tishsingh399/clementine-ds) — the spec format originated there. See its [Notion docs](https://tinasingh.notion.site/Clementine-DS-379e72c9cf36806f9a5ce8fdb927b93f) for the architecture narrative.
 
 ## What this is
 
