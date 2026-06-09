@@ -10,6 +10,7 @@
   "files": ["dist", "_templates", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc",
+    "prepare": "tsc",
     "dev": "tsx src/cli/index.ts",
     "test": "node --test --import tsx tests/*.test.ts",
     "validate:self": "tsx src/cli/index.ts validate examples/button"
