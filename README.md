@@ -7,7 +7,7 @@
 ![node](https://img.shields.io/badge/node-%E2%89%A518-brightgreen)
 ![status](https://img.shields.io/badge/status-alpha-orange)
 
-**Reference implementation:** [Clementine DS](https://github.com/tishsingh399/clementine-ds) — the spec format originated there. [Live Storybook](https://clementine-ds-storybook.vercel.app) · [Notion docs](https://tinasingh.notion.site/Clementine-DS-379e72c9cf36806f9a5ce8fdb927b93f).
+**Reference implementation:** [Clementine DS](https://github.com/tishsingh399/clementine-ds) — the spec format originated there. [Mintlify docs](https://clementineds.mintlify.app) · [Live Storybook](https://clementine-ds-storybook.vercel.app) · [Notion docs](https://tinasingh.notion.site/Clementine-DS-379e72c9cf36806f9a5ce8fdb927b93f).
 
 ## What this is
 
