@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import kleur from "kleur";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { validateSpec } from "../validate/index.js";
@@ -22,6 +22,45 @@ async function readPkgVersion(): Promise<string> {
   }
 }
 
+async function isSpecDir(dir: string): Promise<boolean> {
+  try {
+    await stat(join(dir, "index.md"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Expand input paths into concrete spec directories. A path that directly
+ * contains index.md is a spec dir; otherwise we recurse into subdirectories and
+ * collect every descendant that has one. This lets `validate specs` discover
+ * nested categories (e.g. specs/ai/<component>) instead of silently skipping
+ * them when the input is a parent directory.
+ */
+async function expandSpecDirs(inputs: string[]): Promise<string[]> {
+  const found = new Set<string>();
+  async function walk(dir: string): Promise<void> {
+    if (await isSpecDir(dir)) {
+      found.add(resolve(dir));
+      return; // a spec dir is a leaf; don't descend into it
+    }
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory() && e.name !== "node_modules") {
+        await walk(join(dir, e.name));
+      }
+    }
+  }
+  for (const input of inputs) await walk(input);
+  return [...found].sort();
+}
+
 const program = new Command();
 
 program
@@ -39,13 +78,24 @@ program
   .description(
     "Validate one or more spec directories. Exits non-zero on any error.",
   )
-  .argument("<dirs...>", "spec directories, each containing index.md + tokens.json")
+  .argument(
+    "<dirs...>",
+    "spec directories (each with index.md + tokens.json), or a parent like specs/ — nested specs are discovered recursively",
+  )
   .option("--json", "emit machine-readable JSON")
   .action(async (dirs: string[], opts: { json?: boolean }) => {
     let hadError = false;
     const all = [];
-    for (const dir of dirs) {
-      const result = await validateSpec(resolve(dir));
+    const specDirs = await expandSpecDirs(dirs);
+    if (specDirs.length === 0) {
+      process.stderr.write(
+        `No spec directories (containing index.md) found under: ${dirs.join(", ")}\n`,
+      );
+      process.exit(1);
+    }
+    for (const abs of specDirs) {
+      const dir = relative(process.cwd(), abs) || abs;
+      const result = await validateSpec(abs);
       all.push({ dir, ...result });
       if (!result.passed) hadError = true;
 
