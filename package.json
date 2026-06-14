@@ -1,19 +1,25 @@
 {
   "name": "agentic-spec",
   "version": "0.1.0",
-  "description": "Generate agentic design system specs from Figma. Emits machine-readable specs (frontmatter + closed token contract) that AI agents can read, validate against, and extend.",
+  "description": "Give any design system a machine-readable, enforceable contract that AI agents read before they write code. Closed token lists, named parts, required states — validated in CI and served to agents over MCP.",
   "type": "module",
   "main": "dist/cli/index.js",
   "bin": {
-    "agentic-spec": "dist/cli/index.js"
+    "agentic-spec": "dist/cli/index.js",
+    "agentic-spec-mcp": "dist/mcp/index.js"
   },
-  "files": ["dist", "_templates", "README.md", "LICENSE"],
+  "files": ["dist", "_templates", "examples", "docs", "README.md", "LICENSE"],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "prepare": "tsc",
     "dev": "tsx src/cli/index.ts",
+    "mcp": "tsx src/mcp/index.ts",
     "test": "node --test --import tsx tests/*.test.ts",
-    "validate:self": "tsx src/cli/index.ts validate examples/button"
+    "benchmark": "npm run build && node benchmark/run.mjs",
+    "validate:self": "tsx src/cli/index.ts validate examples"
   },
   "keywords": [
     "design-system",
@@ -38,9 +44,11 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
     "commander": "^12.1.0",
+    "kleur": "^4.1.5",
     "yaml": "^2.5.0",
-    "kleur": "^4.1.5"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

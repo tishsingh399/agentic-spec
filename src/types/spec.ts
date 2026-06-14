@@ -86,7 +86,9 @@ export interface TokenEntry {
   role: string;
   /** Dotted path in the source token JSON */
   path: string;
-  /** Bound primitive reference, e.g. `{color.blue.6}` */
+  /** Immediate token this one binds to, e.g. `{action.primary}` (semantic). */
+  references?: string;
+  /** Ultimately-resolved primitive, e.g. `{color.blue.6}`. */
   primitive?: string;
   light?: string;
   dark?: string;

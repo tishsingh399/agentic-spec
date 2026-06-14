@@ -1,166 +1,100 @@
 # agentic-spec
 
-> Generate machine-readable design system specs that AI agents can read, validate against, and extend. Bridges Figma → spec → code.
+> Give any design system a machine-readable, **enforceable** contract that AI agents read before they write code.
 
-![npm version](https://img.shields.io/badge/version-0.1.0-blue)
+[![npm](https://img.shields.io/npm/v/agentic-spec?color=2563eb)](https://www.npmjs.com/package/agentic-spec)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![node](https://img.shields.io/badge/node-%E2%89%A518-brightgreen)
-![status](https://img.shields.io/badge/status-alpha-orange)
 
-**Reference implementation:** [Clementine DS](https://github.com/tishsingh399/clementine-ds) — the spec format originated there. [Mintlify docs](https://clementineds.mintlify.app) · [Live Storybook](https://clementine-ds-storybook.vercel.app) · [Notion docs](https://tinasingh.notion.site/Clementine-DS-379e72c9cf36806f9a5ce8fdb927b93f).
+## The problem
 
-## What this is
-
-Design systems usually ship two artifacts: a component library and a Storybook. Both drift from documentation the moment the first PR lands. When an AI agent (Claude, Cursor, an MCP server) is asked to use the system, the agent has nothing concrete to anchor to and reliably:
+When an AI agent (Claude Code, Cursor, Copilot, v0) builds UI against your design system, it has nothing machine-checkable to hold onto. Your docs and Storybook are written for humans. So the agent:
 
 - invents tokens that don't exist (`color.brand.primary`)
 - skips required ARIA (focus ring, `aria-busy`)
 - misses interaction states (focus, loading, error)
-- picks the wrong variant for the context
+- binds a component straight to a raw value, skipping your semantic layer
+- and nothing catches any of it until review, or production
 
-`agentic-spec` ships a **third artifact** — a per-component `index.md + tokens.json` pair — with a closed contract the agent must respect:
+Design systems have a human interface (docs, Storybook) and no enforceable interface for the non-human consumers that now do a lot of the building.
 
-- `token_contract` is a closed list. Anything else is a lint failure.
-- `semantic_parts` names every region a token can target.
-- `required_aria` and `interaction_states` are enumerated.
-- `sources` points the agent at the exact code, story, and token files.
+## What agentic-spec is
 
-The spec format is the one used in [Clementine DS](https://github.com/tishsingh399/clementine-ds), an agentic React design system with 3-tier tokens (primitive → semantic → component) and one spec per component.
+A format plus a tool that gives each component a **closed, checkable contract** — and enforces it in two places:
+
+- **In CI**, via a CLI that fails the build when code drifts from the contract.
+- **In the editor**, via an MCP server that hands the contract to the agent *before* it generates code, and lets the agent check its own work.
+
+A contract is two files per component:
+
+```
+specs/button/
+  index.md      # frontmatter contract + human prose
+  tokens.json   # the closed list of tokens this component may use
+```
+
+The frontmatter closes the system: `token_contract` is exhaustive, `semantic_parts` names every region a token can target, `required_aria` and `interaction_states` are enumerated, `sources` points at the real code/story/token files. Anything outside it is a lint failure.
+
+## Does it actually catch anything?
+
+Yes. The [enforcement benchmark](./benchmark) seeds the mistakes agents actually make and runs the validator:
+
+```
+  Agent mistakes surfaced:      7/7  (5 block CI, 2 warn)
+  False positives (clean spec): 0
+```
+
+Invented tokens, contract/code drift, primitive-tier shortcuts, identity mismatch, self-reported "valid" while broken, bad dates, bad status — all surfaced, clean specs left alone. Run it yourself: `npm run benchmark`.
 
 ## Install
 
 ```bash
-npm install -g agentic-spec
-# or use without installing:
-npx agentic-spec --help
+npx agentic-spec --help          # no install
+npm install -g agentic-spec      # or global
 ```
 
 Requires Node 18+.
 
-## Commands
+## Use it
 
-### `agentic-spec init <name>`
-
-Scaffold a new spec for a component.
+### 1. Scaffold and validate (CLI / CI)
 
 ```bash
-agentic-spec init tooltip --out ./specs --ds-version "tina-ds@HEAD"
-# ✓ Wrote ./specs/tooltip/index.md
-# ✓ Wrote ./specs/tooltip/tokens.json
+npx agentic-spec init tooltip --out ./specs
+npx agentic-spec validate ./specs        # recurses; validates every contract
 ```
 
-Fills in defaults for status (`Draft`), `last_verified` (today), code/storybook/token paths. You fill in `semantic_parts`, `token_contract`, and the prose body.
-
-### `agentic-spec validate <dirs...>`
-
-Validate one or more spec directories. Exits non-zero on any error.
-
-```bash
-agentic-spec validate ./specs/button ./specs/modal
-# PASS button (./specs/button)
-#   tokens: 13 in contract, 13 in tokens.json · states: 6 · parts: 5
-# FAIL modal (./specs/modal)
-#   tokens: 4 in contract, 4 in tokens.json · states: 4 · parts: 5
-#   error  ai-ready-gate          status=AI-Ready requires checks.aria_correct=true (checks.aria_correct)
-```
-
-Checks:
-
-| Rule | What it catches |
-|---|---|
-| `missing-spec` / `missing-tokens` | files don't exist |
-| `bad-frontmatter` | YAML doesn't parse |
-| `identity-mismatch` | spec's component name ≠ tokens.json's |
-| `missing-token-entry` | token in `token_contract` has no `tokens.json` entry |
-| `orphan-token-entry` | `tokens.json` entry not referenced by contract |
-| `bad-token-tier` / `bad-token-path` | entry is malformed |
-| `bad-status` / `bad-date` / `future-date` | metadata is wrong |
-| `lying-check` | self-reported `checks.tokens_valid=true` when validator says otherwise |
-| `ai-ready-gate` | `status: AI-Ready` requires all 5 checks to be true |
-
-Add `--json` for machine-readable output (good for CI).
-
-### `agentic-spec from-figma <url>` _(in progress)_
-
-Generate a spec from a Figma component via [southleft/figma-console-mcp](https://github.com/southleft/figma-console-mcp). The CLI defines the adapter shape ([`src/extract/figma-mcp.ts`](./src/extract/figma-mcp.ts)) and the snapshot→spec mapping. The actual MCP transport is provided by the host agent (Claude Code, Cursor) — `agentic-spec` is deliberately decoupled from any specific MCP client.
-
-See [ROADMAP.md](./ROADMAP.md) for the integration shape.
-
-## Example
-
-The [`examples/button/`](./examples/button/) directory contains a real spec (the Button from [Clementine DS](https://github.com/tishsingh399/clementine-ds)) you can validate:
-
-```bash
-agentic-spec validate examples/button
-# PASS button (examples/button)
-#   tokens: 15 in contract, 15 in tokens.json · states: 6 · parts: 5
-```
-
-The contract is 15 component-tier tokens (`button.bg.default`, `button.fg.on-filled`, `button.border.focus`, ...) — each one references a semantic token, which references a primitive. The validator checks every link in the chain.
-
-## The spec format in 30 seconds
+`validate` exits non-zero on any error, so it drops straight into CI:
 
 ```yaml
----
-component: button
-ds_version: clementine-ds@HEAD (2026-06-08 verified)
-status: AI-Ready
-last_verified: 2026-06-08
-category: Component
-required_aria: [aria-label, aria-disabled, aria-busy]
-semantic_parts:
-  root: The native <button> — owns interactive state, focus ring
-  label: Text content
-  icon-leading: Optional leading icon
-token_contract:
-  - button.bg.default
-  - button.bg.hover
-  - button.border.focus
-  # ... closed list of 15 component-tier tokens
-interaction_states: [default, hover, focus, active, disabled, loading]
-checks:
-  aria_correct: true
-  structure_correct: true
-  states_complete: true
-  tokens_valid: true
-  no_invented_styles: true
-sources:
-  code: { path: packages/ui/src/components/Button.tsx, framework: react }
-  storybook: { path: apps/storybook/stories/Button.stories.tsx }
-  tokens: { semantic_light: packages/tokens/src/semantic-light.json }
----
-
-# Human-readable docs go below.
+- run: npx -y agentic-spec validate ./specs
 ```
 
-## Why this matters
+### 2. Serve contracts to your agents (MCP)
 
-When the contract is explicit and closed, an agent can:
+Add the server to Claude Code, Cursor, or any MCP client:
 
-1. **Pre-validate** before writing code. "I want to use `color.indigo.500` for the button — is that in the contract? No → don't write it."
-2. **Generate** code that respects the system on the first pass.
-3. **Detect drift** mechanically: spec says `loading` is a state; story file has no `loading` story → flag it.
-4. **Onboard fast**: every component is documented in the same place, same shape.
+```json
+{
+  "mcpServers": {
+    "agentic-spec": {
+      "command": "npx",
+      "args": ["-y", "agentic-spec-mcp", "./specs"]
+    }
+  }
+}
+```
 
-This is the missing link between MCP-style "I can read Figma" tooling and "I can write code that matches the system."
+The agent gets three tools: `list_components`, `get_contract` (read the closed token list before writing), and `validate_spec` (check its own work after). The contract stops being something you catch in review and becomes something the agent reads up front.
 
-## Roadmap
+## Bring your own design system
 
-See [ROADMAP.md](./ROADMAP.md). Short version:
+agentic-spec is not tied to any one system. The format works on MUI, Mantine, Chakra, or your own components and tokens. See **[Make your design system agent-safe in 20 minutes](./docs/adopt-in-20-minutes.md)**, with a worked non-Clementine example in [`examples/mui-switch`](./examples/mui-switch).
 
-- ✅ `validate` command, full ruleset, JSON output
-- ✅ `init` command, scaffolding
-- ✅ Type definitions for `AgenticSpec` / `TokensContract`
-- ✅ figma-console-mcp adapter shape
-- ⏳ End-to-end `from-figma` (needs host MCP wiring + tests)
-- ⏳ `drift` command (compare spec ↔ TSX ↔ Storybook)
-- ⏳ Watch mode for live validation
-- ⏳ GitHub Action for PR validation
+## Reference implementation
+
+[Clementine DS](https://github.com/tishsingh399/clementine-ds) is a 121-component React design system built entirely on this format — every component ships a contract, all 121 pass `agentic-spec validate`, and it's the proof the format holds at scale. [Live Storybook](https://clementine-ds-storybook.vercel.app) · [Docs](https://clementineds.mintlify.app).
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
-
----
-
-By [Tina Singh](https://github.com/tishsingh399). Working on agentic tooling at the design ↔ code boundary.
+MIT

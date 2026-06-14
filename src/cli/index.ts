@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import kleur from "kleur";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { validateSpec } from "../validate/index.js";
+import { expandSpecDirs } from "../discover.js";
 import { emitSpec } from "../emit/spec.js";
 import type { AgenticSpec, TokensContract } from "../types/spec.js";
 
@@ -20,45 +21,6 @@ async function readPkgVersion(): Promise<string> {
   } catch {
     return "0.0.0";
   }
-}
-
-async function isSpecDir(dir: string): Promise<boolean> {
-  try {
-    await stat(join(dir, "index.md"));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Expand input paths into concrete spec directories. A path that directly
- * contains index.md is a spec dir; otherwise we recurse into subdirectories and
- * collect every descendant that has one. This lets `validate specs` discover
- * nested categories (e.g. specs/ai/<component>) instead of silently skipping
- * them when the input is a parent directory.
- */
-async function expandSpecDirs(inputs: string[]): Promise<string[]> {
-  const found = new Set<string>();
-  async function walk(dir: string): Promise<void> {
-    if (await isSpecDir(dir)) {
-      found.add(resolve(dir));
-      return; // a spec dir is a leaf; don't descend into it
-    }
-    let entries;
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      if (e.isDirectory() && e.name !== "node_modules") {
-        await walk(join(dir, e.name));
-      }
-    }
-  }
-  for (const input of inputs) await walk(input);
-  return [...found].sort();
 }
 
 const program = new Command();

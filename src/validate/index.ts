@@ -185,6 +185,25 @@ function validateTokenEntry(t: TokenEntry, findings: Finding[]): void {
       message: `tier=\"${t.tier}\" is not one of ${allowedTiers.join(", ")}`,
     });
   }
+
+  // Cascade: a component token must bind to a semantic token, never straight to
+  // a primitive. Two robust signals: its immediate `references` equals the
+  // resolved `primitive` (no semantic hop), or `references` is in a primitive
+  // namespace (`{color.*}` / `{colour.*}`, the DTCG convention). Either skips a
+  // tier and breaks one-directional theming (e.g. dark mode).
+  if (t.tier === "component" && t.references) {
+    const ref = t.references.trim();
+    const refEqualsPrimitive = !!t.primitive && ref === t.primitive.trim();
+    const refIsPrimitiveNamespace = /^\{colou?r\./i.test(ref);
+    if (refEqualsPrimitive || refIsPrimitiveNamespace) {
+      findings.push({
+        severity: "error",
+        rule: "bad-token-tier",
+        at: `tokens.json → ${t.name}`,
+        message: `component token references a primitive (${ref}) directly — must bind to a semantic token so theming stays one-directional`,
+      });
+    }
+  }
   if (!t.role || t.role.trim() === "") {
     findings.push({
       severity: "warning",
