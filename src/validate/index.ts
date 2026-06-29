@@ -186,19 +186,7 @@ function validateTokenEntry(t: TokenEntry, findings: Finding[]): void {
     });
   }
 
-  // Cascade: a component token must not bind a COLOR straight to a primitive —
-  // colour is the thing that has to flow through the semantic tier so theming
-  // (light/dark) stays one-directional. We flag references in a primitive colour
-  // namespace (`{color.*}` / `{colour.*}`, the DTCG convention). Non-colour
-  // scales (radius, spacing) are commonly referenced directly and are fine.
-  if (t.tier === "component" && t.references && /^\{colou?r\./i.test(t.references.trim())) {
-    findings.push({
-      severity: "error",
-      rule: "bad-token-tier",
-      at: `tokens.json → ${t.name}`,
-      message: `component token references a colour primitive (${t.references.trim()}) directly — must bind to a semantic token so theming stays one-directional`,
-    });
-  }
+  validateCascadeDirection(t, findings);
   if (!t.role || t.role.trim() === "") {
     findings.push({
       severity: "warning",
@@ -213,6 +201,44 @@ function validateTokenEntry(t: TokenEntry, findings: Finding[]): void {
       rule: "missing-token-path",
       at: `tokens.json → ${t.name}`,
       message: "token has no path — can't resolve to a source JSON",
+    });
+  }
+}
+
+/**
+ * Enforce the one-way cascade: component → semantic → primitive.
+ *
+ * Checked purely from each entry's own `tier` + `references` (no external token
+ * files needed), so it works for any consumer's tokens.json:
+ *
+ *  - component: a COLOUR must not bind straight to a primitive (`{color.*}`) —
+ *    colour has to flow through the semantic tier so light/dark theming stays
+ *    one-directional. Non-colour scales (radius, spacing, motion) are commonly
+ *    referenced directly and are fine.
+ *  - primitive: is a cascade root — it must not reference anything above it.
+ *
+ * (The semantic→primitive row is not enforced here because confirming a
+ * reference resolves to a *primitive* requires the source token files, which the
+ * per-spec validator doesn't read; tracked for a future cross-file pass.)
+ */
+function validateCascadeDirection(t: TokenEntry, findings: Finding[]): void {
+  const ref = t.references?.trim();
+
+  if (t.tier === "component" && ref && /^\{colou?r\./i.test(ref)) {
+    findings.push({
+      severity: "error",
+      rule: "bad-cascade-direction",
+      at: `tokens.json → ${t.name}`,
+      message: `component token references a colour primitive (${ref}) directly — must bind to a semantic token so theming stays one-directional`,
+    });
+  }
+
+  if (t.tier === "primitive" && ref) {
+    findings.push({
+      severity: "error",
+      rule: "bad-cascade-direction",
+      at: `tokens.json → ${t.name}`,
+      message: `primitive token has references=${ref} — primitives are cascade roots and must not reference another tier`,
     });
   }
 }
