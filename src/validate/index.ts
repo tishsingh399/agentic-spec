@@ -109,6 +109,8 @@ export async function validateSpec(dir: string): Promise<ValidationResult> {
         rule: "future-date",
         message: `last_verified=\"${spec.last_verified}\" is in the future`,
       });
+    } else {
+      staleSpec(spec, findings);
     }
   }
 
@@ -194,6 +196,30 @@ export async function validateSpec(dir: string): Promise<ValidationResult> {
       semantic_parts: Object.keys(spec.semantic_parts).length,
     },
   };
+}
+
+const STALE_WARN_DAYS = 90;
+const STALE_FAIL_DAYS = 180;
+const DAY_MS = 86_400_000;
+
+function staleSpec(spec: AgenticSpec, findings: Finding[]): void {
+  if (spec.status !== "AI-Ready") return;
+  const ageDays = Math.floor((Date.now() - Date.parse(spec.last_verified)) / DAY_MS);
+  if (ageDays > STALE_FAIL_DAYS) {
+    findings.push({
+      severity: "error",
+      rule: "stale-spec",
+      at: "last_verified",
+      message: `AI-Ready but last_verified=${spec.last_verified} is ${ageDays}d old (> ${STALE_FAIL_DAYS}) — re-verify or demote status`,
+    });
+  } else if (ageDays > STALE_WARN_DAYS) {
+    findings.push({
+      severity: "warning",
+      rule: "stale-spec",
+      at: "last_verified",
+      message: `AI-Ready but last_verified=${spec.last_verified} is ${ageDays}d old (> ${STALE_WARN_DAYS}) — re-verify soon (demote suggested)`,
+    });
+  }
 }
 
 async function validateNoInventedStyles(
