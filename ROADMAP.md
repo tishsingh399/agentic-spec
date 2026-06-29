@@ -9,6 +9,7 @@
   - `bad-token-tier`, `bad-token-path`, `missing-token-role`
   - `bad-cascade-direction` — enforces component → semantic → primitive (colours bind through semantic; primitives are roots)
   - `bad-status`, `bad-date`, `future-date`
+  - `code-token-usage` — every contract token must be referenced in code (own source + configurable theme/style search paths); default `warn`
   - `lying-check`, `ai-ready-gate`
   - `no-invented-styles`, `states-complete`
 - **`agentic-spec parity`** — Reports per-spec token-contract resolution coverage,
