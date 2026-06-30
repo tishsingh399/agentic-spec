@@ -7,6 +7,7 @@
   - `identity-mismatch`
   - `missing-token-entry`, `orphan-token-entry`
   - `bad-token-tier`, `bad-token-path`, `missing-token-role`
+  - `bad-cascade-direction` — enforces component → semantic → primitive (colours bind through semantic; primitives are roots)
   - `bad-status`, `bad-date`, `future-date`
   - `lying-check`, `ai-ready-gate`
   - `no-invented-styles`, `states-complete`
