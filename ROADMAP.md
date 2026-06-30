@@ -9,6 +9,7 @@
   - `bad-token-tier`, `bad-token-path`, `missing-token-role`
   - `bad-status`, `bad-date`, `future-date`
   - `lying-check`, `ai-ready-gate`
+  - `no-invented-styles`, `states-complete`
 - **`agentic-spec init <name>`** — Scaffolds a Draft spec + empty `tokens.json`
 - **Type definitions** — `AgenticSpec`, `TokensContract`, `TokenEntry` exported from `src/types/`
 - **figma-console-mcp adapter shape** — `FigmaComponentSnapshot`, `snapshotToSpec()`, `McpClient` interface

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import type {
@@ -8,6 +8,7 @@ import type {
 } from "../types/spec.js";
 
 export type Severity = "error" | "warning" | "info";
+type ConfigSeverity = Severity | "off";
 
 export interface Finding {
   severity: Severity;
@@ -29,6 +30,13 @@ export interface ValidationResult {
   };
 }
 
+interface AgenticSpecConfig {
+  selfReport?: {
+    noInventedStyles?: "off" | "warn" | "warning" | "error";
+    statesComplete?: "off" | "warn" | "warning" | "error";
+  };
+}
+
 /**
  * Validate a single spec directory: <dir>/index.md + <dir>/tokens.json.
  *
@@ -44,6 +52,7 @@ export interface ValidationResult {
  */
 export async function validateSpec(dir: string): Promise<ValidationResult> {
   const findings: Finding[] = [];
+  const config = await readConfig();
 
   const { spec, raw: _rawSpec } = await readSpec(dir, findings);
   const tokens = await readTokens(dir, findings);
@@ -141,6 +150,10 @@ export async function validateSpec(dir: string): Promise<ValidationResult> {
     });
   }
 
+  // ── self-reported implementation checks ───────────────────────────────
+  await validateNoInventedStyles(spec, findings, config);
+  await validateStatesComplete(spec, findings, config);
+
   // ── AI-Ready gate ──────────────────────────────────────────────────────
   if (spec.status === "AI-Ready") {
     const allCheckKeys: Array<keyof typeof spec.checks> = [
@@ -160,6 +173,7 @@ export async function validateSpec(dir: string): Promise<ValidationResult> {
         });
       }
     }
+    validateSelfReportGate(spec, findings);
   }
 
   return {
@@ -173,6 +187,129 @@ export async function validateSpec(dir: string): Promise<ValidationResult> {
       semantic_parts: Object.keys(spec.semantic_parts).length,
     },
   };
+}
+
+async function validateNoInventedStyles(
+  spec: AgenticSpec,
+  findings: Finding[],
+  config: AgenticSpecConfig,
+): Promise<void> {
+  if (!spec.checks.no_invented_styles) return;
+  const severity = normalizeSeverity(config.selfReport?.noInventedStyles);
+  if (severity === "off") return;
+
+  const sourcePath = implementationSourcePath(spec);
+  if (!sourcePath) return;
+
+  const source = await readSourceText(sourcePath);
+  if (!source) return;
+
+  const noComments = stripComments(source);
+  const styleBlocks = [
+    ...[...noComments.matchAll(/style=\{\{([\s\S]*?)\}\}/g)].map((m) => m[1]),
+    ...[...noComments.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]),
+  ].join("\n");
+  const offenders = [
+    ...[...styleBlocks.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]),
+    ...[...styleBlocks.matchAll(/(?<![\w-])\d+(?:\.\d+)?m?s\b/g)].map((m) => m[0]),
+  ];
+
+  if (offenders.length) {
+    findings.push({
+      severity,
+      rule: "no-invented-styles",
+      at: `sources.${sourcePath.startsWith("packages/") ? "code" : "react"}.path`,
+      message: `style context has raw value(s): ${[...new Set(offenders)].slice(0, 5).join(", ")}`,
+    });
+  }
+}
+
+async function validateStatesComplete(
+  spec: AgenticSpec,
+  findings: Finding[],
+  config: AgenticSpecConfig,
+): Promise<void> {
+  if (!spec.checks.states_complete) return;
+  const severity = normalizeSeverity(config.selfReport?.statesComplete);
+  if (severity === "off") return;
+  if (spec.interaction_states.length === 0) return;
+
+  const sourcePath = implementationSourcePath(spec);
+  if (sourcePath && !(await fileExists(sourcePath))) return;
+
+  const storybookPath = spec.sources?.storybook?.path;
+  if (!storybookPath || !(await fileExists(storybookPath))) {
+    findings.push({
+      severity,
+      rule: "states-complete",
+      at: "sources.storybook.path",
+      message: storybookPath
+        ? `interaction_states are declared but no Storybook file exists at ${storybookPath}`
+        : "interaction_states are declared but sources.storybook.path is missing",
+    });
+  }
+}
+
+function validateSelfReportGate(spec: AgenticSpec, findings: Finding[]): void {
+  const selfReportRules: Array<[keyof typeof spec.checks, string]> = [
+    ["no_invented_styles", "no-invented-styles"],
+    ["states_complete", "states-complete"],
+  ];
+  for (const [key, rule] of selfReportRules) {
+    const verifierFinding = findings.find((f) => f.rule === rule);
+    if (spec.checks[key] && verifierFinding) {
+      findings.push({
+        severity: verifierFinding.severity,
+        rule: "ai-ready-gate",
+        at: `checks.${key}`,
+        message: `checks.${key}=true but the ${rule} verifier disagrees`,
+      });
+    }
+  }
+}
+
+function implementationSourcePath(spec: AgenticSpec): string | undefined {
+  const sources = spec.sources as AgenticSpec["sources"] & {
+    react?: { path?: string };
+  };
+  return sources.code?.path ?? sources.react?.path;
+}
+
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+}
+
+async function readSourceText(path: string): Promise<string> {
+  try {
+    return await readFile(join(process.cwd(), path), "utf8");
+  } catch {
+    return "";
+  }
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(join(process.cwd(), path));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readConfig(): Promise<AgenticSpecConfig> {
+  try {
+    return JSON.parse(
+      await readFile(join(process.cwd(), ".agenticspec.config.json"), "utf8"),
+    ) as AgenticSpecConfig;
+  } catch {
+    return {};
+  }
+}
+
+function normalizeSeverity(value?: "off" | "warn" | "warning" | "error"): ConfigSeverity {
+  if (value === "off") return "off";
+  if (value === "error") return "error";
+  return "warning";
 }
 
 function validateTokenEntry(t: TokenEntry, findings: Finding[]): void {
