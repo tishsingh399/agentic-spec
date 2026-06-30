@@ -1,5 +1,5 @@
-import { access, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { access, readFile, readdir, stat } from "node:fs/promises";
+import { extname, join, resolve } from "node:path";
 import { parse as yamlParse } from "yaml";
 import type {
   AgenticSpec,
@@ -34,6 +34,10 @@ interface AgenticSpecConfig {
   selfReport?: {
     noInventedStyles?: "off" | "warn" | "warning" | "error";
     statesComplete?: "off" | "warn" | "warning" | "error";
+  };
+  codeTokenUsage?: {
+    severity?: "off" | "warn" | "warning" | "error" | "info";
+    searchPaths?: string[];
   };
 }
 
@@ -134,6 +138,9 @@ export async function validateSpec(dir: string): Promise<ValidationResult> {
     }
     validateTokenEntry(t, findings);
   }
+
+  // ── code-token-usage: contract tokens must be referenced by the code ────
+  await codeTokenUsage(spec, findings);
 
   // ── self-reported checks must not lie ──────────────────────────────────
   const tokensActuallyValid = !findings.some(
@@ -279,9 +286,26 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 }
 
+const SOURCE_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".css", ".scss"]);
+
 async function readSourceText(path: string): Promise<string> {
   try {
-    return await readFile(join(process.cwd(), path), "utf8");
+    const absolutePath = resolve(process.cwd(), path);
+    const st = await stat(absolutePath);
+    if (st.isDirectory()) {
+      const entries = await readdir(absolutePath, { withFileTypes: true });
+      const parts = await Promise.all(
+        entries
+          .filter((e) => e.name !== "node_modules" && !e.name.startsWith("."))
+          .map((e) =>
+            e.isDirectory() || SOURCE_EXT.has(extname(e.name))
+              ? readSourceText(join(absolutePath, e.name))
+              : Promise.resolve(""),
+          ),
+      );
+      return parts.join("\n");
+    }
+    return SOURCE_EXT.has(extname(absolutePath)) ? await readFile(absolutePath, "utf8") : "";
   } catch {
     return "";
   }
@@ -289,7 +313,7 @@ async function readSourceText(path: string): Promise<string> {
 
 async function fileExists(path: string): Promise<boolean> {
   try {
-    await access(join(process.cwd(), path));
+    await access(resolve(process.cwd(), path));
     return true;
   } catch {
     return false;
@@ -306,12 +330,39 @@ async function readConfig(): Promise<AgenticSpecConfig> {
   }
 }
 
-function normalizeSeverity(value?: "off" | "warn" | "warning" | "error"): ConfigSeverity {
+function normalizeSeverity(value?: unknown): ConfigSeverity {
   if (value === "off") return "off";
   if (value === "error") return "error";
+  if (value === "info") return "info";
   return "warning";
 }
 
+async function codeTokenUsage(spec: AgenticSpec, findings: Finding[]): Promise<void> {
+  const config = await readConfig();
+  const severity = normalizeSeverity(config.codeTokenUsage?.severity);
+  if (severity === "off") return;
+
+  const sourcePath = implementationSourcePath(spec);
+  const extraPaths = config.codeTokenUsage?.searchPaths ?? [];
+  const parts = await Promise.all([
+    sourcePath ? readSourceText(sourcePath) : Promise.resolve(""),
+    ...extraPaths.map((path) => readSourceText(path)),
+  ]);
+  const corpus = parts.join("\n");
+  if (!corpus.trim()) return; // no source found to check against — don't false-flag
+
+  for (const token of spec.token_contract) {
+    const dashed = token.replace(/\./g, "-");
+    if (!corpus.includes(token) && !corpus.includes(dashed)) {
+      findings.push({
+        severity,
+        rule: "code-token-usage",
+        at: `token_contract → ${token}`,
+        message: `declares "${token}" but no searched source references it (by name or as --…-${dashed})`,
+      });
+    }
+  }
+}
 function validateTokenEntry(t: TokenEntry, findings: Finding[]): void {
   const allowedTiers = ["primitive", "semantic", "component"];
   if (!allowedTiers.includes(t.tier)) {

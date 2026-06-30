@@ -53,7 +53,7 @@ test("reports missing Storybook files for declared states", async () => {
 test("passes clean self-report fixtures without findings", async () => {
   const { root, specDir } = await fixture({
     source: `export function Button() {
-  return <button style={{ color: "var(--button-fg)" }}>Save</button>;
+  return <button style={{ color: "var(--button-bg)" }}>Save</button>;
 }`,
   });
 
