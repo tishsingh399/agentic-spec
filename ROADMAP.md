@@ -12,6 +12,7 @@
   - `code-token-usage` — every contract token must be referenced in code (own source + configurable theme/style search paths); default `warn`
   - `lying-check`, `ai-ready-gate`
   - `no-invented-styles`, `states-complete`
+  - `stale-spec` — AI-Ready specs warn after 90d / error after 180d since last_verified (real clock)
 - **`agentic-spec parity`** — Reports per-spec token-contract resolution coverage,
   with JSON output and optional strict threshold gating for AI-Ready specs
 - **`agentic-spec diagnose`** — Converts validate/parity signals into an
