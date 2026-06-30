@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import { validateSpec } from "../validate/index.js";
 import { expandSpecDirs } from "../discover.js";
 import { emitSpec } from "../emit/spec.js";
+import { computeParity, summarizeParity } from "../parity/index.js";
 import type { AgenticSpec, TokensContract } from "../types/spec.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -69,6 +70,79 @@ program
     }
     process.exit(hadError ? 1 : 0);
   });
+
+// ── parity ────────────────────────────────────────────────────────────────
+
+program
+  .command("parity")
+  .description(
+    "Report how much of each spec's token contract resolves to concrete token values.",
+  )
+  .argument(
+    "<dirs...>",
+    "spec directories (each with index.md + tokens.json), or a parent like specs/ — nested specs are discovered recursively",
+  )
+  .option("--strict", "exit non-zero when any AI-Ready spec is below threshold")
+  .option("--threshold <n>", "minimum acceptable parity percentage", "80")
+  .option("--json", "emit machine-readable JSON")
+  .action(
+    async (
+      dirs: string[],
+      opts: { strict?: boolean; threshold: string; json?: boolean },
+    ) => {
+      const threshold = Number(opts.threshold);
+      if (!Number.isFinite(threshold)) {
+        process.stderr.write(`Invalid --threshold value: ${opts.threshold}\n`);
+        process.exit(1);
+      }
+
+      const specDirs = await expandSpecDirs(dirs);
+      if (specDirs.length === 0) {
+        process.stderr.write(
+          `No spec directories (containing index.md) found under: ${dirs.join(", ")}\n`,
+        );
+        process.exit(1);
+      }
+
+      const specs = await Promise.all(specDirs.map((dir) => computeParity(dir)));
+      const summary = summarizeParity(specs, threshold);
+      const sortedSpecs = [...specs].sort((a, b) => a.parity - b.parity);
+      const strictFailures = sortedSpecs.filter(
+        (spec) => spec.status === "AI-Ready" && spec.parity < threshold,
+      );
+
+      if (opts.json) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              specs: sortedSpecs.map(({ component, parity, resolved, total, unresolved }) => ({
+                component,
+                parity,
+                resolved,
+                total,
+                unresolved,
+              })),
+              summary,
+            },
+            null,
+            2,
+          ) + "\n",
+        );
+      } else {
+        for (const spec of sortedSpecs) {
+          console.log(
+            `${String(spec.parity).padStart(3)}%  ${spec.component}  (${spec.resolved}/${spec.total})`,
+          );
+        }
+        console.log(
+          `avg ${summary.avg}% across ${sortedSpecs.length} specs, ` +
+            `${summary.below_threshold} below ${threshold}%`,
+        );
+      }
+
+      process.exit(opts.strict && strictFailures.length > 0 ? 1 : 0);
+    },
+  );
 
 // ── init (new component) ───────────────────────────────────────────────────
 
