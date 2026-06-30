@@ -12,6 +12,8 @@
   - `no-invented-styles`, `states-complete`
 - **`agentic-spec parity`** — Reports per-spec token-contract resolution coverage,
   with JSON output and optional strict threshold gating for AI-Ready specs
+- **`agentic-spec diagnose`** — Converts validate/parity signals into an
+  auditable learning worklist without mutating specs
 - **`agentic-spec init <name>`** — Scaffolds a Draft spec + empty `tokens.json`
 - **Type definitions** — `AgenticSpec`, `TokensContract`, `TokenEntry` exported from `src/types/`
 - **figma-console-mcp adapter shape** — `FigmaComponentSnapshot`, `snapshotToSpec()`, `McpClient` interface

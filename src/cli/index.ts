@@ -9,6 +9,7 @@ import { validateSpec } from "../validate/index.js";
 import { expandSpecDirs } from "../discover.js";
 import { emitSpec } from "../emit/spec.js";
 import { computeParity, summarizeParity } from "../parity/index.js";
+import { diagnoseSpecs } from "../diagnose/index.js";
 import type { AgenticSpec, TokensContract } from "../types/spec.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -143,6 +144,60 @@ program
       process.exit(opts.strict && strictFailures.length > 0 ? 1 : 0);
     },
   );
+
+// ── diagnose ──────────────────────────────────────────────────────────────
+
+program
+  .command("diagnose")
+  .description(
+    "Turn validate/parity signals into a governed learning worklist without editing files.",
+  )
+  .argument(
+    "<dirs...>",
+    "spec directories (each with index.md + tokens.json), or a parent like specs/ — nested specs are discovered recursively",
+  )
+  .option("--threshold <n>", "parity threshold used for diagnosis", "80")
+  .option("--json", "emit machine-readable JSON")
+  .action(async (dirs: string[], opts: { threshold: string; json?: boolean }) => {
+    const threshold = Number(opts.threshold);
+    if (!Number.isFinite(threshold)) {
+      process.stderr.write(`Invalid --threshold value: ${opts.threshold}\n`);
+      process.exit(1);
+    }
+
+    const specDirs = await expandSpecDirs(dirs);
+    if (specDirs.length === 0) {
+      process.stderr.write(
+        `No spec directories (containing index.md) found under: ${dirs.join(", ")}\n`,
+      );
+      process.exit(1);
+    }
+
+    const result = await diagnoseSpecs(specDirs, { threshold });
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      process.exit(0);
+    }
+
+    for (const diagnostic of result.diagnostics) {
+      const label =
+        diagnostic.severity === "high"
+          ? kleur.red("high")
+          : diagnostic.severity === "medium"
+            ? kleur.yellow("med ")
+            : kleur.cyan("low ");
+      const rule = diagnostic.proposed_rule ? ` → ${diagnostic.proposed_rule}` : "";
+      console.log(
+        `${label} ${diagnostic.component}: ${diagnostic.issue}${kleur.dim(rule)}`,
+      );
+      console.log(kleur.dim(`     ${diagnostic.recommended_action}`));
+    }
+    console.log(
+      `diagnose: ${result.summary.diagnostics} finding(s) across ` +
+        `${result.summary.components} specs, ${result.summary.high_confidence} high-confidence`,
+    );
+    process.exit(0);
+  });
 
 // ── init (new component) ───────────────────────────────────────────────────
 
