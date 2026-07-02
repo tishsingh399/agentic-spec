@@ -89,7 +89,7 @@ The agent gets three tools: `list_components`, `get_contract` (read the closed t
 
 ## Bring your own design system
 
-agentic-spec is not tied to any one system. The format works on MUI, Mantine, Chakra, or your own components and tokens. See **[Make your design system agent-safe in 20 minutes](./docs/adopt-in-20-minutes.md)**, with a worked non-Clementine example in [`examples/mui-switch`](./examples/mui-switch).
+agentic-spec is not tied to any one system. The format works on MUI, Mantine, Chakra, or your own components and tokens. See **[Make your design system agent-safe in 20 minutes](./docs/adopt-in-20-minutes.md)**, with worked non-Clementine examples in [`examples/mui-switch`](./examples/mui-switch) and [`examples/astryx-button`](./examples/astryx-button) — the latter is the verifier pointed at Meta's newly open-sourced [Astryx](https://github.com/facebook/astryx).
 
 ## Reference implementation
 
