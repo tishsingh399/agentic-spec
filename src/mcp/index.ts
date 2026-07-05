@@ -9,62 +9,32 @@
 // Run:  agentic-spec-mcp [specsRoot]      (default: ./specs, or AGENTIC_SPEC_ROOT)
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { resolve } from "node:path";
 import { z } from "zod";
-import { readFile } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
-import { parse as parseYaml } from "yaml";
-import { expandSpecDirs } from "../discover.js";
-import { validateSpec } from "../validate/index.js";
+import {
+  listComponentContracts,
+  parityReport,
+  readContractBundle,
+  resolveToken,
+  validateContract,
+  validatePaintedValues,
+} from "./protocol.js";
 
 const ROOT = process.env.AGENTIC_SPEC_ROOT || process.argv[2] || "specs";
 
-/** Map component name → spec directory, parsed from each spec's frontmatter. */
-async function specIndex(): Promise<Map<string, string>> {
-  const dirs = await expandSpecDirs([ROOT]);
-  const map = new Map<string, string>();
-  for (const dir of dirs) {
-    let name = basename(dir);
-    try {
-      const raw = await readFile(join(dir, "index.md"), "utf8");
-      const fm = /^---\n([\s\S]*?)\n---/.exec(raw);
-      if (fm) {
-        const parsed = parseYaml(fm[1] ?? "") as { component?: string } | null;
-        if (parsed?.component) name = String(parsed.component);
-      }
-    } catch {
-      /* fall back to basename */
-    }
-    map.set(name, dir);
-  }
-  return map;
-}
-
-function resolveDir(map: Map<string, string>, name: string): string | undefined {
-  return map.get(name) ?? map.get(name.toLowerCase());
-}
-
-const server = new McpServer({ name: "agentic-spec", version: "0.1.0" });
+const server = new McpServer({ name: "agentic-spec", version: "0.2.0" });
 
 server.tool(
   "list_components",
   "List every component in this design system that has a machine-readable contract, with its status. Call this first to see what you can build against.",
   {},
   async () => {
-    const map = await specIndex();
-    if (map.size === 0)
+    const entries = await listComponentContracts(ROOT);
+    if (entries.length === 0) {
       return { content: [{ type: "text", text: `No specs found under ${resolve(ROOT)}` }] };
-    const rows: string[] = [];
-    for (const [name, dir] of [...map].sort()) {
-      let status = "unknown";
-      try {
-        const raw = await readFile(join(dir, "index.md"), "utf8");
-        const m = /^status:\s*(\S+)/m.exec(raw);
-        if (m) status = m[1]!;
-      } catch {
-        /* ignore */
-      }
-      rows.push(`${name}\t${status}`);
     }
+
+    const rows = entries.map((entry) => `${entry.component}\t${entry.status}`);
     return { content: [{ type: "text", text: `component\tstatus\n${rows.join("\n")}` }] };
   },
 );
@@ -74,30 +44,24 @@ server.tool(
   "Return the full contract for a component — the closed token list, named parts, required ARIA, and interaction states — that you MUST read and obey before writing or editing this component. Anything outside tokens.json is a violation.",
   { component: z.string().describe("component name, e.g. 'button' (see list_components)") },
   async ({ component }) => {
-    const map = await specIndex();
-    const dir = resolveDir(map, component);
-    if (!dir)
+    const bundle = await readContractBundle(ROOT, component);
+    if (!bundle) {
       return {
         content: [{ type: "text", text: `No contract for "${component}". Run list_components.` }],
         isError: true,
       };
-    const index = await readFile(join(dir, "index.md"), "utf8");
-    let tokens = "(no tokens.json found)";
-    try {
-      tokens = await readFile(join(dir, "tokens.json"), "utf8");
-    } catch {
-      /* ignore */
     }
+
     return {
       content: [
         {
           type: "text",
           text:
             `# Contract: ${component}\n\n` +
-            `## index.md\n${index}\n\n` +
+            `## index.md\n${bundle.specMarkdown}\n\n` +
             `## tokens.json — closed token list (using anything not in here is a violation)\n` +
             "```json\n" +
-            tokens +
+            bundle.tokensJson +
             "\n```",
         },
       ],
@@ -110,14 +74,14 @@ server.tool(
   "Validate a component against its token contract and report violations (invented tokens, wrong token tier, token/contract drift, identity mismatch, self-reported lying). Run this after editing to confirm you stayed inside the contract.",
   { component: z.string().describe("component name to validate") },
   async ({ component }) => {
-    const map = await specIndex();
-    const dir = resolveDir(map, component);
-    if (!dir)
+    const r = await validateContract(ROOT, component);
+    if (!r) {
       return {
         content: [{ type: "text", text: `No contract for "${component}".` }],
         isError: true,
       };
-    const r = await validateSpec(dir);
+    }
+
     const errors = r.findings.filter((f) => f.severity === "error");
     const head = r.passed
       ? `PASS ${component}`
@@ -125,6 +89,7 @@ server.tool(
     const lines = r.findings.map(
       (f) => `[${f.severity}] ${f.rule}: ${f.message}${f.at ? ` (${f.at})` : ""}`,
     );
+
     return {
       content: [
         {
@@ -136,6 +101,89 @@ server.tool(
         },
       ],
     };
+  },
+);
+
+server.tool(
+  "validate_contract",
+  "Validate a component contract and return the same pass/fail signal as the CI validator, in structured JSON for agents that need a machine-readable gate.",
+  { component: z.string().describe("component name to validate") },
+  async ({ component }) => {
+    const result = await validateContract(ROOT, component);
+    if (!result) {
+      return {
+        content: [{ type: "text", text: `No contract for "${component}".` }],
+        isError: true,
+      };
+    }
+
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  "resolve_token",
+  "Look up one token inside a component's closed token sidecar. Use this before writing CSS so the agent can see the real tier, path, role, references, and concrete values instead of inventing them.",
+  {
+    component: z.string().describe("component name, e.g. 'button'"),
+    token: z.string().describe("token name from token_contract, e.g. 'button.bg.default'"),
+  },
+  async ({ component, token }) => {
+    const result = await resolveToken(ROOT, component, token);
+    if (!result) {
+      return {
+        content: [{ type: "text", text: `No token "${token}" found for "${component}".` }],
+        isError: true,
+      };
+    }
+
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  "get_parity_report",
+  "Report token-contract parity: every token in index.md must have a concrete value in tokens.json. This is the same parity concept used by the CLI, exposed to agents.",
+  {
+    component: z.string().optional().describe("optional component name; omit for all specs"),
+    threshold: z.number().optional().describe("optional passing threshold percentage, default 95"),
+  },
+  async ({ component, threshold }) => {
+    const result = await parityReport(ROOT, { component, threshold });
+    if (component && result.specs.length === 0) {
+      return {
+        content: [{ type: "text", text: `No contract for "${component}".` }],
+        isError: true,
+      };
+    }
+
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  "validate_painted_values",
+  "Compare rendered CSS values supplied by a browser/Figma bridge against the component's token sidecar. This does not capture pixels by itself; it verifies observed values from another tool.",
+  {
+    component: z.string().describe("component name to check"),
+    observed: z.array(
+      z.object({
+        token: z.string().describe("token name that was rendered"),
+        value: z.string().describe("rendered CSS value observed by another tool"),
+        mode: z.enum(["light", "dark"]).optional().describe("theme mode to compare, default light"),
+      }),
+    ),
+  },
+  async ({ component, observed }) => {
+    const result = await validatePaintedValues(ROOT, component, observed);
+    if (!result) {
+      return {
+        content: [{ type: "text", text: `No contract for "${component}".` }],
+        isError: true,
+      };
+    }
+
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
   },
 );
 

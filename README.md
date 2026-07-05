@@ -85,7 +85,16 @@ Add the server to Claude Code, Cursor, or any MCP client:
 }
 ```
 
-The agent gets three tools: `list_components`, `get_contract` (read the closed token list before writing), and `validate_spec` (check its own work after). The contract stops being something you catch in review and becomes something the agent reads up front.
+The agent gets the contract surface as tools:
+
+- `list_components` — see what has a machine-readable contract
+- `get_contract` — read the closed token list, required ARIA, parts, states, and source links before writing
+- `validate_spec` / `validate_contract` — run the same contract checks the CI gate uses
+- `resolve_token` — look up a real token entry instead of inventing a value
+- `get_parity_report` — confirm every contracted token resolves to a concrete value in the sidecar
+- `validate_painted_values` — compare rendered values supplied by a browser/Figma bridge against the contract
+
+That last tool is deliberately narrow: it does not capture browser pixels or read Figma by itself. It verifies observed values from another tool, so the proof stays honest. The contract stops being something you catch in review and becomes something the agent reads up front.
 
 ## Bring your own design system
 
