@@ -39,6 +39,9 @@ interface AgenticSpecConfig {
     severity?: "off" | "warn" | "warning" | "error" | "info";
     searchPaths?: string[];
   };
+  slotNesting?: {
+    severity?: "off" | "warn" | "warning" | "error" | "info";
+  };
 }
 
 /**
@@ -143,6 +146,9 @@ export async function validateSpec(dir: string): Promise<ValidationResult> {
 
   // ── code-token-usage: contract tokens must be referenced by the code ────
   await codeTokenUsage(spec, findings);
+
+  // ── slot-nesting: JSX children must be ones the slots/nesting allow ─────
+  await slotNesting(spec, findings, config);
 
   // ── self-reported checks must not lie ──────────────────────────────────
   const tokensActuallyValid = !findings.some(
@@ -389,6 +395,110 @@ async function codeTokenUsage(spec: AgenticSpec, findings: Finding[]): Promise<v
     }
   }
 }
+/**
+ * slot-nesting: read JSX in the implementation + Storybook sources and flag a
+ * component child its container does not allow.
+ *
+ *  - `nesting:` (explicit) maps container → allowed children, e.g.
+ *    `TableTr: [TableTh, TableTd]`.
+ *  - otherwise `slots:` is folded into one rule: the root component's direct
+ *    children must appear in some slot, or be one of its own sub-components
+ *    (same name prefix, e.g. CardSection under Card).
+ *
+ * With explicit `nesting`, a sub-component that a container lists (e.g.
+ * TableTd) is also flagged when it appears outside every container listing it.
+ * Intrinsic elements (div, span) and fragments are transparent.
+ */
+async function slotNesting(
+  spec: AgenticSpec,
+  findings: Finding[],
+  config: AgenticSpecConfig,
+): Promise<void> {
+  const severity = normalizeSeverity(config.slotNesting?.severity);
+  if (severity === "off") return;
+
+  const root = spec.component
+    .split(/[-_\s]+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join("");
+  const nesting =
+    spec.nesting ?? (spec.slots ? { [root]: [...new Set(Object.values(spec.slots).flat())] } : undefined);
+  if (!nesting) return;
+  const isSub = (name: string) => name !== root && name.startsWith(root);
+
+  const paths = [
+    ...new Set([implementationSourcePath(spec), spec.sources?.storybook?.path]),
+  ].filter((p): p is string => !!p);
+  for (const path of paths) {
+    for (const { parent, child, line } of jsxEdges(await readSourceText(path))) {
+      const allowed = parent ? nesting[parent] : undefined;
+      if (allowed) {
+        if (allowed.includes(child) || (!spec.nesting && isSub(child))) continue;
+        findings.push({
+          severity,
+          rule: "slot-nesting",
+          at: `${path}:${line}`,
+          message: `<${child}> is not allowed inside <${parent}> (allowed: ${allowed.join(", ")})`,
+        });
+      } else if (spec.nesting && isSub(child)) {
+        const homes = Object.keys(nesting).filter((k) => nesting[k]?.includes(child));
+        if (!homes.length) continue;
+        findings.push({
+          severity,
+          rule: "slot-nesting",
+          at: `${path}:${line}`,
+          message: `<${child}> must be inside ${homes.map((h) => `<${h}>`).join(" or ")}, found ${parent ? `<${parent}>` : "no parent"}`,
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Parent → child edges between capitalised JSX tags, with 1-based line numbers.
+ * `Table.Td` is normalised to `TableTd`.
+ *
+ * shortcut: a tag-stack scanner, not a TSX parser — JSX inside attribute
+ * expressions (`icon={<X/>}`) is skipped, and a helper component whose root is
+ * a sub-component (`const Cell = () => <TableTd/>`) reads as parentless.
+ * Upgrade to the TypeScript compiler API if specs hit those patterns.
+ */
+export function jsxEdges(source: string): Array<{ parent?: string; child: string; line: number }> {
+  const src = source
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+    .replace(/^\s*\/\/.*$/gm, "");
+  const edges: Array<{ parent?: string; child: string; line: number }> = [];
+  const stack: string[] = [];
+  // the lookbehind skips TS generics like `Array<Foo>` / `useState<Foo>(`
+  const tag = /<\/([A-Z][\w.]*)|(?<![\w$.)\]])<([A-Z][\w.]*)/g;
+  let m: RegExpExecArray | null;
+  while ((m = tag.exec(src))) {
+    const name = (m[1] ?? m[2])!.replace(/\./g, "");
+    if (m[1]) {
+      const i = stack.lastIndexOf(name);
+      if (i >= 0) stack.length = i;
+      continue;
+    }
+    // walk the attributes to the tag's closing `>`, skipping strings and {…}
+    let i = tag.lastIndex;
+    let depth = 0;
+    let quote = "";
+    for (; i < src.length; i++) {
+      const c = src[i];
+      if (quote) {
+        if (c === quote) quote = "";
+      } else if (c === '"' || c === "'" || c === "`") quote = c;
+      else if (c === "{") depth++;
+      else if (c === "}") depth--;
+      else if (c === ">" && depth === 0) break;
+    }
+    edges.push({ parent: stack.at(-1), child: name, line: src.slice(0, m.index).split("\n").length });
+    if (src[i - 1] !== "/") stack.push(name);
+    tag.lastIndex = i + 1;
+  }
+  return edges;
+}
+
 function validateTokenEntry(t: TokenEntry, findings: Finding[]): void {
   const allowedTiers = ["primitive", "semantic", "component"];
   if (!allowedTiers.includes(t.tier)) {
