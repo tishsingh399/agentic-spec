@@ -64,6 +64,17 @@ export interface AgenticSpec {
    * in this list is a lint failure.
    */
   token_contract: string[];
+  /**
+   * Components an agent may place in each semantic part, e.g.
+   * `body: [Stack, Text]`. Without `nesting`, the union becomes the allowed
+   * direct children of the root component in JSX.
+   */
+  slots?: Record<string, string[]>;
+  /**
+   * Explicit JSX nesting: container → allowed component children, e.g.
+   * `TableTr: [TableTh, TableTd]`. Overrides the slots-derived root rule.
+   */
+  nesting?: Record<string, string[]>;
   interaction_states: string[];
   checks: SpecChecks;
   sources: SpecSources;
